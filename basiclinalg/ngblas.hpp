@@ -3,11 +3,12 @@
 
 // optimized matrix kernels
 
-#ifdef __clang__
-#define REGCALL __regcall
-#else
 #define REGCALL
-#endif
+//#ifdef __clang__
+//#define REGCALL __regcall
+//#else
+//#define REGCALL
+//#endif
 
 namespace ngbla
 {

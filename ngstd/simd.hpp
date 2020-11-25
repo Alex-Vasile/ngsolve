@@ -97,7 +97,7 @@ namespace ngstd
 #elif defined __SSE__
     return 2;
 #else
-    return 1;
+    return 2;
 #endif
   }
   
@@ -161,6 +161,7 @@ namespace ngstd
 
   // #endif
 
+#ifdef __SSE__
 #ifndef __AVX__
   INLINE __m128i my_mm_cmpgt_epi64(__m128i a, __m128i b) {
     auto  res_lo = _mm_cvtsi128_si64(a)  > _mm_cvtsi128_si64(b) ? -1:0;
@@ -185,6 +186,7 @@ namespace ngstd
                                   _mm256_extractf128_si256(b, 1));
     return _mm256_insertf128_si256 (_mm256_castsi128_si256(rlo), rhi, 1);
   }
+#endif
 #endif
 #endif
 
@@ -219,6 +221,24 @@ namespace ngstd
     static constexpr int Size() { return 2; }    
     int64_t operator[] (int i) const { return ((int64_t*)(&mask))[i]; }    
   };
+#else
+  template <> 
+  class SIMD<mask64,2>
+  {
+    bool mask[2];
+  public:
+    SIMD (int i)
+      : mask{i>0, i>1}
+    { ; }
+    SIMD (bool m0, bool m1)
+      : mask{m0, m1}
+    { ; }
+    // SIMD (__m128i _mask) : mask(_mask) { ; }
+    // bool* Data() const { return mask; }
+    static constexpr int Size() { return 2; }    
+    bool operator[] (int i) const { return mask[i]; }    
+  };
+
 #endif
   
   
@@ -431,7 +451,109 @@ namespace ngstd
                       SIMD<double,2>(_mm_unpackhi_pd(a.Data(),b.Data())));
   }
   
-#endif
+#else //  __SSE__
+  template<>
+  class SIMD<int64_t,2> 
+  {
+    int64_t data[2];
+    
+  public:
+    static constexpr int Size() { return 2; }
+    SIMD () {}
+    SIMD (const SIMD &) = default;
+    SIMD (int64_t v0, int64_t v1)
+      {
+        data[0] = v0;
+        data[1] = v1;
+      }
+    
+    SIMD & operator= (const SIMD &) = default;
+
+    SIMD (int64_t val) { data[0] = data[1] = val; }
+
+    template<typename T, typename std::enable_if<std::is_convertible<T, std::function<int64_t(int)>>::value, int>::type = 0>
+    SIMD (const T & func)
+    {   
+      data[0] = func(0);
+      data[1] = func(1);
+    }
+    
+    INLINE auto operator[] (int i) const { return data[i]; }
+    INLINE auto & operator[] (int i) { return data[i]; }
+    INLINE auto Data() const {return *this;}
+    INLINE auto Data() {return *this;}
+//     INLINE int64_t* Data() const { return data; }
+//     INLINE int64_t* & Data() { return data; }
+  };
+
+
+  
+  template<>
+  class SIMD<double,2>
+  {
+    double data[2];
+    
+  public:
+    static constexpr int Size() { return 2; }
+    SIMD () {}
+    SIMD (const SIMD &) = default;
+    SIMD (double v0, double v1)
+      {
+        data[0] = v0;
+        data[1] = v1;
+      }
+    
+    SIMD & operator= (const SIMD &) = default;
+
+    SIMD (double val) { data[0] = data[1] = val; }
+    SIMD (int val)    { data[0] = data[1] = val; }
+    SIMD (size_t val) { data[0] = data[1] = val; }
+
+    SIMD (double const * p)
+      {
+        data[0] = p[0];
+        data[1] = p[1];
+      }
+    SIMD (double const * p, SIMD<mask64,2> mask)
+      {
+        data[0] = mask[0] ? p[0] : 0.0;
+        data[1] = mask[1] ? p[1] : 0.0;
+      }
+
+    void Store (double * p)
+      {
+        p[0] = data[0];
+        p[1] = data[1];
+      }
+    void Store (double * p, SIMD<mask64,2> mask)
+    {
+      if (mask[0]) p[0] = data[0];
+      if (mask[1]) p[1] = data[1];
+    }    
+    
+    template<typename T, typename std::enable_if<std::is_convertible<T, std::function<double(int)>>::value, int>::type = 0>                                                                    SIMD (const T & func)
+    {   
+      data[0] = func(0);
+      data[1] = func(1);
+    }   
+    
+    INLINE double operator[] (int i) const { return data[i]; }
+    INLINE double & operator[] (int i) { return data[i]; }
+//     INLINE double* Data() const { return data; }
+//     INLINE double* & Data() { return data; }
+    INLINE auto Data() const {return *this;}
+    INLINE auto Data() {return *this;}
+
+    operator tuple<double&,double&> ()
+    { return tuple<double&,double&>((*this)[0], (*this)[1]); }
+  };
+
+  INLINE auto Unpack (SIMD<double,2> a, SIMD<double,2> b)
+  {
+    return make_tuple(SIMD<double,2>(a[0], b[0]),
+                      SIMD<double,2>(a[1], b[1]));
+  }
+#endif //  __SSE__
 
   
   
@@ -741,6 +863,9 @@ namespace ngstd
 #ifndef __AVX__
   INLINE SIMD<int64_t,4> operator+ (SIMD<int64_t,4> a, SIMD<int64_t,4> b) { return { a.Lo()+b.Lo(), a.Hi()+b.Hi() }; }
 #endif
+#ifndef __SSE__
+  INLINE SIMD<int64_t,2> operator+ (SIMD<int64_t,2> a, SIMD<int64_t,2> b) { return { a[0]+b[0], a[1]+b[1] }; }
+#endif
   
   template <int N>
   INLINE SIMD<int64_t,N> operator+ (SIMD<int64_t,N> a, int64_t b) { return a+SIMD<int64_t,N>(b); }
@@ -750,6 +875,9 @@ namespace ngstd
   INLINE SIMD<int64_t,N> operator- (SIMD<int64_t,N> a, SIMD<int64_t,N> b) { return a.Data()-b.Data(); }
 #ifndef __AVX__
   INLINE SIMD<int64_t,4> operator- (SIMD<int64_t,4> a, SIMD<int64_t,4> b) { return { a.Lo()-b.Lo(), a.Hi()-b.Hi() }; }
+#endif
+#ifndef __SSE__
+  INLINE SIMD<int64_t,2> operator- (SIMD<int64_t,2> a, SIMD<int64_t,2> b) { return { a[0]-b[0], a[1]-b[1] }; }
 #endif
 
   template <int N>  
@@ -761,6 +889,9 @@ namespace ngstd
 #ifndef __AVX__
   INLINE SIMD<int64_t,4> operator- (SIMD<int64_t,4> a) { return { -a.Lo(), -a.Hi() }; }
 #endif
+#ifndef __SSE__
+  INLINE SIMD<int64_t,2> operator- (SIMD<int64_t,2> a) { return { -a[0], -a[1] }; }
+#endif
   
   
   template <int N>  
@@ -771,12 +902,18 @@ namespace ngstd
   INLINE SIMD<int64_t,N> & operator-= (SIMD<int64_t,N> & a, SIMD<int64_t,N> b) { a.Data()-=b.Data(); return a; }
   template <int N>  
   INLINE SIMD<int64_t,N> & operator-= (SIMD<int64_t,N> & a, int64_t b) { a-=SIMD<int64_t,N>(b); return a; }
+#ifndef __SSE__
+  INLINE SIMD<int64_t,2> operator-= (SIMD<int64_t,2> a, SIMD<int64_t,2> b) { a[0]-=b[0]; a[1]-=b[1]; return a; }
+#endif
 
   
   template <int N>
   INLINE SIMD<double,N> operator+ (SIMD<double,N> a, SIMD<double,N> b) { return a.Data()+b.Data(); }
 #ifndef __AVX__
   INLINE SIMD<double,4> operator+ (SIMD<double,4> a, SIMD<double,4> b) { return { a.Lo()+b.Lo(), a.Hi()+b.Hi() }; }
+#endif
+#ifndef __SSE__
+  INLINE SIMD<double,2> operator+ (SIMD<double,2> a, SIMD<double,2> b) { return { a[0]+b[0], a[1]+b[1] }; }
 #endif
   
   template <int N>
@@ -788,6 +925,9 @@ namespace ngstd
 #ifndef __AVX__
   INLINE SIMD<double,4> operator- (SIMD<double,4> a, SIMD<double,4> b) { return { a.Lo()-b.Lo(), a.Hi()-b.Hi() }; }
 #endif
+#ifndef __SSE__
+  INLINE SIMD<double,2> operator- (SIMD<double,2> a, SIMD<double,2> b) { return { a[0]-b[0], a[1]-b[1] }; }
+#endif
 
   template <int N>  
   INLINE SIMD<double,N> operator- (double a, SIMD<double,N> b) { return SIMD<double,N>(a)-b; }
@@ -798,11 +938,17 @@ namespace ngstd
 #ifndef __AVX__
   INLINE SIMD<double,4> operator- (SIMD<double,4> a) { return { -a.Lo(), -a.Hi() }; }
 #endif
+#ifndef __SSE__
+  INLINE SIMD<double,2> operator- (SIMD<double,2> a) { return { -a[0], -a[1] }; }
+#endif
   
   template <int N>  
   INLINE SIMD<double,N> operator* (SIMD<double,N> a, SIMD<double,N> b) { return a.Data()*b.Data(); }
 #ifndef __AVX__
   INLINE SIMD<double,4> operator* (SIMD<double,4> a, SIMD<double,4> b) { return { a.Lo()*b.Lo(), a.Hi()*b.Hi() }; }
+#endif
+#ifndef __SSE__
+  INLINE SIMD<double,2> operator* (SIMD<double,2> a, SIMD<double,2> b) { return { a[0]*b[0], a[1]*b[1] }; }
 #endif
   template <int N>  
   INLINE SIMD<double,N> operator* (double a, SIMD<double,N> b) { return SIMD<double,N>(a)*b; }
@@ -810,6 +956,9 @@ namespace ngstd
   INLINE SIMD<double,N> operator* (SIMD<double,N> b, double a) { return SIMD<double,N>(a)*b; }
   template <int N>  
   INLINE SIMD<double,N> operator/ (SIMD<double,N> a, SIMD<double,N> b) { return a.Data()/b.Data(); }
+#ifndef __SSE__
+  INLINE SIMD<double,2> operator/ (SIMD<double,2> a, SIMD<double,2> b) { return { a[0]/b[0], a[1]/b[1] }; }
+#endif
   template <int N>  
   INLINE SIMD<double,N> operator/ (SIMD<double,N> a, double b) { return a/SIMD<double,N>(b); }
   template <int N>  
@@ -820,6 +969,9 @@ namespace ngstd
   INLINE SIMD<double,N> & operator+= (SIMD<double,N> & a, double b) { a+=SIMD<double,N>(b); return a; }
   template <int N>  
   INLINE SIMD<double,N> & operator-= (SIMD<double,N> & a, SIMD<double,N> b) { a.Data()-=b.Data(); return a; }
+#ifndef __SSE__
+  INLINE SIMD<double,2> operator-= (SIMD<double,2> a, SIMD<double,2> b) { a[0]-=b[0]; a[1]-=b[1]; return a; }
+#endif
   template <int N>  
   INLINE SIMD<double,N> & operator-= (SIMD<double,N> & a, double b) { a-=SIMD<double,N>(b); return a; }
   template <int N>  
@@ -828,10 +980,13 @@ namespace ngstd
   INLINE SIMD<double,N> & operator*= (SIMD<double,N> & a, double b) { a*=SIMD<double,N>(b); return a; }
   template <int N>  
   INLINE SIMD<double,N> & operator/= (SIMD<double,N> & a, SIMD<double,N> b) { a.Data()/=b.Data(); return a; }
+#ifndef __SSE__
+  INLINE SIMD<double,2> operator/= (SIMD<double,2> a, SIMD<double,2> b) { a[0]/=b[0]; a[1]/=b[1]; return a; }
+#endif
 
   template <int N>    
   INLINE SIMD<double,N> L2Norm2 (SIMD<double,N> a) { return a.Data()*a.Data(); }
-  template <int N>
+  template <int N>    
   INLINE SIMD<double,N> Trans (SIMD<double,N> a) { return a; }
 
 
@@ -937,6 +1092,88 @@ namespace ngstd
                         _mm_and_si128(b.Data(),a.Data())
                         );
   }
+#else
+  using std::sqrt;
+  INLINE SIMD<double,2> sqrt (SIMD<double,2> a)
+  { return ngstd::SIMD<double,2>([&](int i)->double { return sqrt(a[i]); } ); }
+  using std::fabs;
+  INLINE SIMD<double,2> fabs (SIMD<double,2> a)
+  { return ngstd::SIMD<double,2>([&](int i)->double { return fabs(a[i]); } ); }
+  using std::floor;
+  INLINE SIMD<double,2> floor (SIMD<double,2> a)
+  { return ngstd::SIMD<double,2>([&](int i)->double { return floor(a[i]); } ); }
+  using std::ceil;  
+  INLINE SIMD<double,2> ceil (SIMD<double,2> a) 
+  { return ngstd::SIMD<double,2>([&](int i)->double { return ceil(a[i]); } ); }
+
+  INLINE SIMD<mask64,2> operator<= (SIMD<double,2> a , SIMD<double,2> b)
+  { return {a[0]<=b[0], a[1]<=b[1]}; }
+  INLINE SIMD<mask64,2> operator< (SIMD<double,2> a , SIMD<double,2> b)
+  { return {a[0]<b[0], a[1]<b[1]}; }
+  INLINE SIMD<mask64,2> operator>= (SIMD<double,2> a , SIMD<double,2> b)
+  { return {a[0]>=b[0], a[1]>=b[1]}; }
+  INLINE SIMD<mask64,2> operator> (SIMD<double,2> a , SIMD<double,2> b)
+  { return {a[0]>b[0], a[1]>b[1]}; }
+  INLINE SIMD<mask64,2> operator== (SIMD<double,2> a , SIMD<double,2> b)
+  { return {a[0]==b[0], a[1]==b[1]}; }
+  INLINE SIMD<mask64,2> operator!= (SIMD<double,2> a , SIMD<double,2> b)
+  { return {a[0]!=b[0], a[1]!=b[1]}; }
+
+  INLINE SIMD<mask64,2> operator<= (SIMD<int64_t,2> a , SIMD<int64_t,2> b)
+  { return {a[0]<=b[0], a[1]<=b[1]}; }
+  INLINE SIMD<mask64,2> operator< (SIMD<int64_t,2> a , SIMD<int64_t,2> b)
+  { return {a[0]<b[0], a[1]<b[1]}; }
+  INLINE SIMD<mask64,2> operator>= (SIMD<int64_t,2> a , SIMD<int64_t,2> b)
+  { return {a[0]>=b[0], a[1]>=b[1]}; }
+  INLINE SIMD<mask64,2> operator> (SIMD<int64_t,2> a , SIMD<int64_t,2> b)
+  { return {a[0]>b[0], a[1]>b[1]}; }
+  INLINE SIMD<mask64,2> operator== (SIMD<int64_t,2> a , SIMD<int64_t,2> b)
+  { return {a[0]==b[0], a[1]==b[1]}; }
+  INLINE SIMD<mask64,2> operator!= (SIMD<int64_t,2> a , SIMD<int64_t,2> b)
+  { return {a[0]!=b[0], a[1]!=b[1]}; }
+
+  
+  
+ INLINE SIMD<mask64,2> operator&& (SIMD<mask64,2> a, SIMD<mask64,2> b)
+  { return {a[0]&&b[0], a[1]&&b[1]}; }
+  INLINE SIMD<mask64,2> operator|| (SIMD<mask64,2> a, SIMD<mask64,2> b)
+  { return {a[0]||b[0], a[1]||b[1]}; }
+  INLINE SIMD<mask64,2> operator! (SIMD<mask64,2> a)
+  { return {!a[0], !a[1]}; }
+  INLINE SIMD<double,2> If (SIMD<mask64,2> a, SIMD<double,2> b, SIMD<double,2> c)
+  {
+    return { a[0] ? b[0]:c[0], a[1] ? b[1]:c[1] };
+  }
+  
+  INLINE SIMD<double,2> IfPos (SIMD<double,2> a, SIMD<double,2> b, SIMD<double,2> c)
+  { return ngstd::SIMD<double,2>([&](int i)->double { return a[i]>0 ? b[i] : c[i]; }); }
+  INLINE SIMD<double,2> IfZero (SIMD<double,2> a, SIMD<double,2> b, SIMD<double,2> c)
+  { return ngstd::SIMD<double,2>([&](int i)->double { return a[i]==0. ? b[i] : c[i]; }); }
+
+  
+  INLINE double HSum (SIMD<double,2> sd)
+  {
+    return sd[0]+sd[1];
+  }
+
+  INLINE auto HSum (SIMD<double,2> sd1, SIMD<double,2> sd2)
+  {
+    return SIMD<double,2> (HSum(sd1), HSum(sd2));
+  }
+
+  INLINE auto HSum (SIMD<double,2> v1, SIMD<double,2> v2, SIMD<double,2> v3, SIMD<double,2> v4)
+  {
+    SIMD<double,2> hsum1 = HSum (v1, v2);
+    SIMD<double,2> hsum2 = HSum (v3, v4);
+    return SIMD<double,4> (hsum1, hsum2);
+  }
+
+  INLINE SIMD<int64_t, 2> If(SIMD<mask64, 2> a, SIMD<int64_t, 2> b,
+                             SIMD<int64_t, 2> c)
+  {
+    return { a[0] ? b[0]:c[0], a[1] ? b[1]:c[1] };
+  }
+
 #endif
 
   

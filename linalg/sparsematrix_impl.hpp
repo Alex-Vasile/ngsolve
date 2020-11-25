@@ -27,14 +27,14 @@ namespace ngla
     int *pi = colnr.Data()+fi, *pin = colnr.Data()+fin;
     while (pi < pin)
       {
-        _mm_prefetch (reinterpret_cast<void*>(pi), _MM_HINT_T2);
+        // _mm_prefetch (reinterpret_cast<void*>(pi), _MM_HINT_T2);
         pi += 64/sizeof(int);
       }
 
     TM * vi = &data[fi], * vin = (&data[fin-1])+1;
     while (vi < vin)
       {
-        _mm_prefetch (reinterpret_cast<void*>(vi), _MM_HINT_T2);
+        // _mm_prefetch (reinterpret_cast<void*>(vi), _MM_HINT_T2);
         vi += 64/sizeof(double);
       }
 #endif
